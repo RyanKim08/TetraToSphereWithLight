@@ -37,6 +37,57 @@ var vc = vec4(-0.816497, -0.471405, 0.333333, 1);
 var vd = vec4(0.816497, -0.471405, 0.333333, 1);
 
 var vBuffer;
+var nBuffer;
+
+var normalsArray = [];
+
+var lightPosition = vec4(1.0, 1.0, 1.0, 0.0);
+var lightAmbient = vec4(0.2, 0.2, 0.2, 1.0);
+var lightDiffuse = vec4(1.0, 1.0, 1.0, 1.0);
+var lightSpecular = vec4(1.0, 1.0, 1.0, 1.0);
+
+var materialAmbient = [
+    vec4(1.0, 0.0, 0.0, 0.0),
+    vec4(1.0, 1.0, 0.0, 0.0),
+    vec4(0.0, 1.0, 0.0, 0.0),
+    vec4(0.0, 0.0, 1.0, 0.0),
+    vec4(1.0, 0.0, 1.0, 0.0),
+    vec4(0.0, 1.0, 1.0, 0.0)
+];
+
+var materialDiffuse = [
+    vec4(0.8, 0.0, 0.0, 0.0),
+    vec4(1.0, 0.8, 0.0, 0.0),
+    vec4(0.0, 0.8, 0.0, 0.0),
+    vec4(0.0, 0.0, 0.8, 0.0),
+    vec4(1.0, 0.0, 0.8, 0.0),
+    vec4(0.0, 1.0, 0.8, 0.0)
+];
+
+var materialSpecular = [
+    vec4(0.8, 0.0, 0.0, 0.0),
+    vec4(1.0, 0.8, 0.0, 0.0),
+    vec4(0.0, 0.8, 0.0, 0.0),
+    vec4(0.0, 0.0, 0.8, 0.0),
+    vec4(1.0, 0.0, 0.8, 0.0),
+    vec4(0.0, 1.0, 0.8, 0.0)
+];
+
+var materialShininess = 100.0;
+
+var ambientProduct;
+var diffuseProduct;
+var specularProduct;
+
+var ambientLoc;
+var diffuseLoc;
+var specularLoc;
+var lightLoc;
+var shininessLoc;
+
+var colorIndex = 0;
+
+var goRight = true;
 
 
 window.onload = function init() {
@@ -73,24 +124,41 @@ window.onload = function init() {
     projectionMatrix = ortho(left, right, bottom, ytop, near, far);
     gl.uniformMatrix4fv(projectionMatrixLoc, false, flatten(projectionMatrix));
 
-    document.getElementById("iTheta").onclick =
-        function () {
-            theta += 0.1;
-        };
+    nBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, flatten(normalsArray), gl.STATIC_DRAW);
 
-    document.getElementById("dTheta").onclick =
-        function () {
-            theta -= 0.1;
-        };
+    var vNormal = gl.getAttribLocation(program, "vNormal");
+    gl.vertexAttribPointer(vNormal, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(vNormal);
 
-    document.getElementById("iPhi").onclick =
-        function () {
-            phi += 0.1;
-        };
+    ambientProduct = mult(lightAmbient, materialAmbient[colorIndex]);
+    diffuseProduct = mult(lightDiffuse, materialDiffuse[colorIndex]);
+    specularProduct = mult(lightSpecular, materialSpecular[colorIndex]);
 
-    document.getElementById("dPhi").onclick =
-        function () {
-            phi -= 0.1;
+    ambientLoc = gl.getUniformLocation(program, "ambientProduct");
+    diffuseLoc = gl.getUniformLocation(program, "diffuseProduct");
+    specularLoc = gl.getUniformLocation(program, "specularProduct");
+    lightLoc = gl.getUniformLocation(program, "lightPosition");
+    shininessLoc = gl.getUniformLocation(program, "shininess");
+
+    gl.uniform4fv(ambientLoc, flatten(ambientProduct));
+    gl.uniform4fv(diffuseLoc, flatten(diffuseProduct));
+    gl.uniform4fv(specularLoc, flatten(specularProduct));
+    gl.uniform4fv(lightLoc, flatten(lightPosition));
+    gl.uniform1f(shininessLoc, materialShininess);
+
+    document.getElementById("colors").onchange =
+        function (event) {
+            colorIndex = event.target.value;
+
+            ambientProduct = mult(lightAmbient, materialAmbient[colorIndex]);
+            diffuseProduct = mult(lightDiffuse, materialDiffuse[colorIndex]);
+            specularProduct = mult(lightSpecular, materialSpecular[colorIndex]);
+
+            gl.uniform4fv(ambientLoc, flatten(ambientProduct));
+            gl.uniform4fv(diffuseLoc, flatten(diffuseProduct));
+            gl.uniform4fv(specularLoc, flatten(specularProduct));
         };
 
     document.getElementById("iSub").onclick =
@@ -100,11 +168,14 @@ window.onload = function init() {
 
                 index = 0;
                 pointsArray = [];
+                normalsArray = [];
 
                 tetrahedron(va, vb, vc, vd, numTimesToSubdivide);
 
                 gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
                 gl.bufferData(gl.ARRAY_BUFFER, flatten(pointsArray), gl.STATIC_DRAW);
+                gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, flatten(normalsArray), gl.STATIC_DRAW);
             }
         };
 
@@ -115,26 +186,29 @@ window.onload = function init() {
 
                 index = 0;
                 pointsArray = [];
+                normalsArray = [];
 
                 tetrahedron(va, vb, vc, vd, numTimesToSubdivide);
 
                 gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
                 gl.bufferData(gl.ARRAY_BUFFER, flatten(pointsArray), gl.STATIC_DRAW);
+                gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+                gl.bufferData(gl.ARRAY_BUFFER, flatten(normalsArray), gl.STATIC_DRAW);
             }
         };
 
     document.addEventListener("keydown",
         function (event) {
-            if (event.keyCode == 37) {   // Left Arrow
+            if (event.keyCode == 65 || event.keyCode == 37) {   // Left A
                 theta += 0.1;
             }
-            if (event.keyCode == 39) {   // Right Arrow
+            if (event.keyCode == 68 || event.keyCode == 39) {   // Right D
                 theta -= 0.1;
             }
-            if (event.keyCode == 38) {   // Up Arrow
+            if (event.keyCode == 87 || event.keyCode == 38) {   // Up W
                 phi += 0.1;
             }
-            if (event.keyCode == 40) {   // Down Arrow
+            if (event.keyCode == 83 || event.keyCode == 40) {   // Down S
                 phi -= 0.1;
             }
 
@@ -149,6 +223,14 @@ function triangle(a, b, c) {
     pointsArray.push(b);
     pointsArray.push(c);
     index += 3;
+
+    var t1 = subtract(a, b);
+    var t2 = subtract(a, c);
+    var normal = cross(t1, t2);
+
+    normalsArray.push(normal);
+    normalsArray.push(normal);
+    normalsArray.push(normal);
 }
 
 
@@ -199,13 +281,24 @@ function render() {
 
     modelViewMatrix = lookAt(eye, at, up);
 
+    if (goRight) {
+        if (lightPosition[0] < 5) {
+            lightPosition[0] += 0.1;
+        } else {
+            goRight = false;
+        }
+    } else {
+        if (lightPosition[0] > -5) {
+            lightPosition[0] -= 0.1;
+        } else {
+            goRight = true;
+        }
+    }
+    gl.uniform4fv(lightLoc, flatten(lightPosition));
+
     gl.uniformMatrix4fv(modelViewMatrixLoc, false, flatten(modelViewMatrix));
 
-    gl.uniform1i(useBlackLoc, false);
-
     gl.drawArrays(gl.TRIANGLES, 0, pointsArray.length);
-
-    gl.uniform1i(useBlackLoc, true);
 
     for (var i = 0; i < index; i += 3)
         gl.drawArrays(gl.LINE_LOOP, i, 3);
